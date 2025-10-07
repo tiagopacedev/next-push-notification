@@ -34,51 +34,72 @@ const serwist = new Serwist({
 
 serwist.addEventListeners();
 
+// Helper to open IndexedDB
+function openDB() {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open('badgeDB', 1)
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore('badge', { keyPath: 'id' })
+    }
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+}
 
-let badgeCount = 0
+// Get stored badge count
+async function getBadgeCount() {
+  const db = await openDB()
+  return new Promise<number>((resolve, reject) => {
+    const tx = db.transaction('badge', 'readonly')
+    const store = tx.objectStore('badge')
+    const req = store.get('count')
+    req.onsuccess = () => resolve(req.result?.value || 0)
+    req.onerror = () => reject(req.error)
+  })
+}
 
+// Save badge count
+async function setBadgeCount(count: number) {
+  const db = await openDB()
+  const tx = db.transaction('badge', 'readwrite')
+  const store = tx.objectStore('badge')
+  store.put({ id: 'count', value: count })
+  await tx.oncomplete
+}
+
+// Push event with persistent badge
 self.addEventListener('push', async (event) => {
   if (!event.data) return
-
   const data = event.data.json()
+
+  // ✅ Read previous count
+  let badgeCount = await getBadgeCount()
   badgeCount++
 
-  // ✅ Set the app badge (only works if PWA is installed)
+  // ✅ Save updated count
+  await setBadgeCount(badgeCount)
+
+  // ✅ Update app badge
   if ('setAppBadge' in navigator) {
     try {
       await navigator.setAppBadge(badgeCount)
     } catch (err) {
-      console.error('Failed to set badge:', err)
+      console.error(err)
     }
   }
 
-  // ✅ Show notification
+  // Show notification
   const options = {
     body: data.body,
     icon: data.icon || '/icon.png',
     badge: '/badge.png',
-    vibrate: [100, 50, 100],
-    data: {
-      dateOfArrival: Date.now(),
-      primaryKey: '2',
-    },
+    data: { dateOfArrival: Date.now() },
   }
-
   event.waitUntil(self.registration.showNotification(data.title, options))
 
-  // ✅ Notify all open pages about the new badge count
+  // Notify all clients
   const clientsList = await self.clients.matchAll()
   clientsList.forEach(client =>
-    client.postMessage({
-      type: 'SET_BADGE',
-      count: badgeCount,
-    })
+    client.postMessage({ type: 'SET_BADGE', count: badgeCount })
   )
-})
-
-
-self.addEventListener('notificationclick', function (event) {
-  console.log('Notification click received.')
-  event.notification.close()
-  event.waitUntil(self.clients.openWindow(self.location.origin))
 })
