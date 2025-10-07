@@ -151,7 +151,7 @@ export default function Page() {
   const handleSetAppBadge = async () => {
     if ('setAppBadge' in navigator) {
       try {
-        await navigator.setAppBadge(badgeCount)
+        await navigator.setAppBadge(badgeCount + 1)
 
         if (navigator.serviceWorker?.controller) {
           navigator.serviceWorker.controller.postMessage({
