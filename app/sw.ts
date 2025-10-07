@@ -33,23 +33,50 @@ const serwist = new Serwist({
 
 
 serwist.addEventListeners();
-self.addEventListener('push', function (event) {
-  if (event.data) {
-    const data = event.data.json()
-    const options = {
-      body: data.body,
-      icon: data.icon || '/icon.png',
-      badge: '/badge.png',
-      vibrate: [100, 50, 100],
-      data: {
-        dateOfArrival: Date.now(),
-        primaryKey: '2',
-      },
+
+
+let badgeCount = 0
+
+self.addEventListener('push', async (event) => {
+  if (!event.data) return
+
+  const data = event.data.json()
+  badgeCount++
+
+  // ✅ Set the app badge (only works if PWA is installed)
+  if ('setAppBadge' in navigator) {
+    try {
+      await navigator.setAppBadge(badgeCount)
+    } catch (err) {
+      console.error('Failed to set badge:', err)
     }
-    event.waitUntil(self.registration.showNotification(data.title, options))
   }
+
+  // ✅ Show notification
+  const options = {
+    body: data.body,
+    icon: data.icon || '/icon.png',
+    badge: '/badge.png',
+    vibrate: [100, 50, 100],
+    data: {
+      dateOfArrival: Date.now(),
+      primaryKey: '2',
+    },
+  }
+
+  event.waitUntil(self.registration.showNotification(data.title, options))
+
+  // ✅ Notify all open pages about the new badge count
+  const clientsList = await self.clients.matchAll()
+  clientsList.forEach(client =>
+    client.postMessage({
+      type: 'SET_BADGE',
+      count: badgeCount,
+    })
+  )
 })
- 
+
+
 self.addEventListener('notificationclick', function (event) {
   console.log('Notification click received.')
   event.notification.close()
